@@ -8,6 +8,7 @@ A bot for posting RSS feed updates to Bluesky using Node.js and Docker.
 - Avoids duplicate posts by tracking links locally.
 - Fetches metadata (title, description, thumbnail) for embedded links.
 - Adheres to Bluesky's API rate limits.
+- Configurable post frequency, duplicate-checking, and freshness criteria.
 
 ## Requirements
 - [Node.js](https://nodejs.org/) version 16 or higher.
@@ -48,7 +49,36 @@ const RSS_FEEDS = [
 ```
 - Replace the placeholder URLs with the RSS feed URLs you want the bot to monitor. Optionally, add a `title` for each feed.
 
-### 5. Start the bot
+### 5. Configure Posting Behavior
+The bot includes several configurable parameters that you can modify in `bot.mjs`:
+
+#### **Post Frequency**
+- By default, the bot fetches and posts updates every 5 minutes.
+- To change the interval, update this line in `bot.mjs`:
+```javascript
+setInterval(postLatestRSSItems, 5 * 60 * 1000); // Repeat every 5 minutes
+```
+- Replace `5 * 60 * 1000` with your desired interval in milliseconds.
+
+#### **Avoiding Duplicate Posts**
+- The bot keeps track of links it has already posted using a local file (`lastPostedLinks.json`).
+- You can adjust how many links are stored for each feed by editing this section:
+```javascript
+if (lastPostedLinks[feedUrl].length > 20) {
+  lastPostedLinks[feedUrl].shift();
+}
+```
+- Replace `20` with the number of past links to retain.
+
+#### **Freshness Criteria**
+- The bot only considers posts published within the last hour as "new."
+- To adjust this timeframe, update this function in `bot.mjs`:
+```javascript
+const oneHourAgo = Date.now() - 60 * 60 * 1000; // Last hour
+```
+- Replace `60 * 60 * 1000` with your desired timeframe in milliseconds.
+
+### 6. Start the bot
 Run the bot using:
 ```bash
 npm start
@@ -57,7 +87,7 @@ npm start
 The bot will:
 - Fetch new entries from the configured RSS feeds.
 - Post them to your Bluesky account if they haven't been posted already.
-- Repeat every 5 minutes.
+- Repeat based on your configured interval.
 
 ## Common Issues and Troubleshooting
 
@@ -95,3 +125,45 @@ This project is licensed under the ISC License.
 
 ## Contributing
 Contributions are welcome! Open an issue or submit a pull request if you'd like to help improve the project.
+
+
+### Docker Support
+
+You can use Docker to run the project without installing Node.js or its dependencies locally. Here’s how:
+
+#### 1. Build the Docker Image
+In the project directory (where your `Dockerfile` is located), run the following command to build the Docker image:
+```bash
+docker build -t bluebot .
+```
+
+#### 2. Run the Docker Container
+Start the container using:
+```bash
+docker run -d --name bluebot-container bluebot
+```
+This command:
+- Runs the container in detached mode (`-d`).
+- Names the container `bluebot-container`.
+
+#### 3. View Logs
+Check the logs to ensure the bot is running correctly:
+```bash
+docker logs bluebot-container
+```
+
+#### 4. Stop or Remove the Container
+To stop the running container:
+```bash
+docker stop bluebot-container
+```
+To remove the container:
+```bash
+docker rm bluebot-container
+```
+
+#### Optional: Expose HTTP Port
+If you modify the bot to expose an HTTP server for status monitoring, ensure port 3000 is exposed in the Dockerfile and map it when running the container:
+```bash
+docker run -d -p 3000:3000 --name bluebot-container bluebot
+```
