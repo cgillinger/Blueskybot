@@ -105,17 +105,6 @@ If the bot fails to start due to missing modules, run:
 npm install
 ```
 
-### Remote Repository Issues
-If pushing to GitHub gives an error like `remote: Repository not found`:
-1. Check that the correct remote URL is set:
-   ```bash
-   git remote -v
-   ```
-2. Update it if necessary:
-   ```bash
-   git remote set-url origin https://github.com/cgillinger/bluebot.git
-   ```
-
 ## Additional Notes
 - The bot uses placeholders for RSS feeds and requires manual updates in `bot.mjs` to set the actual feeds.
 - `.env` is intentionally included in the repository because it contains only placeholder data.
