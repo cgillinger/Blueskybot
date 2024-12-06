@@ -29,8 +29,8 @@ Follow these steps to set up and run the bot using Node.js:
 
 ### Step 1: Clone the Repository
 ```bash
-git clone https://github.com/cgillinger/bluebot.git
-cd bluebot
+git clone https://github.com/cgillinger/Blueskybot.git
+cd Blueskybot
 ```
 
 ### Step 2: Install Dependencies
@@ -140,13 +140,7 @@ The provided Dockerfile sets up the container for running the bot. Here’s a br
    ```
    - Copies all files from your local project directory into the container.
 
-5. **Expose Ports (Optional)**:
-   ```dockerfile
-   EXPOSE 3000
-   ```
-   - Prepares the container to use port 3000. Useful for HTTP monitoring if added later.
-
-6. **Start the Bot**:
+5. **Start the Bot**:
    ```dockerfile
    CMD ["node", "bot.mjs"]
    ```
