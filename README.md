@@ -1,5 +1,5 @@
 
-# Bluebot
+# Blueskybot
 
 A bot for posting RSS feed updates to Bluesky using Node.js (and Docker).
 
