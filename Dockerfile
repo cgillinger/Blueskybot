@@ -1,3 +1,4 @@
+
 # Use Node.js as the base image
 FROM node:18
 
@@ -8,7 +9,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install necessary packages
-RUN npm install
+RUN npm install --only=production
 
 # Copy the entire project to the working directory
 COPY . .
@@ -17,4 +18,4 @@ COPY . .
 EXPOSE 3000
 
 # Start the script
-CMD ["node", "bluesky_rss_bot.js"]
+CMD ["node", "bot.mjs"]

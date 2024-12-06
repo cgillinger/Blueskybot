@@ -3,6 +3,8 @@
 
 A bot for posting RSS feed updates to Bluesky using Node.js (and Docker).
 
+---
+
 ## Features
 - Fetches RSS feeds and posts new updates to a Bluesky account.
 - Avoids duplicate posts by tracking links locally.
@@ -10,139 +12,95 @@ A bot for posting RSS feed updates to Bluesky using Node.js (and Docker).
 - Adheres to Bluesky's API rate limits.
 - Configurable post frequency, duplicate-checking, and freshness criteria.
 
-## Requirements
-- [Node.js](https://nodejs.org/) version 16 or higher.
-- A Bluesky account.
+---
 
-## Getting Started
+## Quick Start
 
-Follow these steps to set up and run the bot:
+Choose your preferred setup method:
 
-### 1. Clone the repository
+1. **[Standard Node.js Installation](#nodejs-installation)**: If you are comfortable with Node.js.
+2. **[Docker Installation](#docker-installation)**: Recommended if you prefer to use containers.
+
+---
+
+## Node.js Installation
+
+Follow these steps to set up and run the bot using Node.js:
+
+### Step 1: Clone the Repository
 ```bash
 git clone https://github.com/cgillinger/bluebot.git
 cd bluebot
 ```
 
-### 2. Install dependencies
-Run the following command to install all required dependencies:
+### Step 2: Install Dependencies
+Install all required dependencies:
 ```bash
 npm install
 ```
 
-### 3. Configure the `.env` file
-- A `.env` file is included in the repository with placeholder values. Open it and replace placeholders with your actual Bluesky credentials:
+### Step 3: Configure the `.env` File
+- Open the included `.env` file and replace placeholder values with your Bluesky credentials:
 ```env
 BLUESKY_USERNAME=your_username@provider.com
 BLUESKY_PASSWORD=your_secure_password
 ```
 - **Important**: The `.env` file must remain in the project directory for the bot to work.
 
-### 4. Update RSS Feeds
-- Open the `bot.mjs` file in a text editor.
-- Locate the `RSS_FEEDS` array:
+### Step 4: Update RSS Feeds
+- Open `bot.mjs` in a text editor.
+- Update the `RSS_FEEDS` array with the RSS feed URLs you want the bot to monitor:
 ```javascript
 const RSS_FEEDS = [
   { url: 'https://example.com/rss-feed-1.xml', title: 'Example Feed 1' },
   { url: 'https://example.com/rss-feed-2.xml', title: 'Example Feed 2' },
 ];
 ```
-- Replace the placeholder URLs with the RSS feed URLs you want the bot to monitor. Optionally, add a `title` for each feed.
 
-### 5. Configure Posting Behavior
-The bot includes several configurable parameters that you can modify in `bot.mjs`:
-
-#### **Post Frequency**
-- By default, the bot fetches and posts updates every 5 minutes.
-- To change the interval, update this line in `bot.mjs`:
-```javascript
-setInterval(postLatestRSSItems, 5 * 60 * 1000); // Repeat every 5 minutes
-```
-- Replace `5 * 60 * 1000` with your desired interval in milliseconds.
-
-#### **Avoiding Duplicate Posts**
-- The bot keeps track of links it has already posted using a local file (`lastPostedLinks.json`).
-- You can adjust how many links are stored for each feed by editing this section:
-```javascript
-if (lastPostedLinks[feedUrl].length > 20) {
-  lastPostedLinks[feedUrl].shift();
-}
-```
-- Replace `20` with the number of past links to retain.
-
-#### **Freshness Criteria**
-- The bot only considers posts published within the last hour as "new."
-- To adjust this timeframe, update this function in `bot.mjs`:
-```javascript
-const oneHourAgo = Date.now() - 60 * 60 * 1000; // Last hour
-```
-- Replace `60 * 60 * 1000` with your desired timeframe in milliseconds.
-
-### 6. Start the bot
-Run the bot using:
+### Step 5: Start the Bot
+Run the bot:
 ```bash
 npm start
 ```
 
-The bot will:
-- Fetch new entries from the configured RSS feeds.
-- Post them to your Bluesky account if they haven't been posted already.
-- Repeat based on your configured interval.
+---
 
-## Common Issues and Troubleshooting
+## Docker Installation
 
-### Invalid Bluesky Credentials
-If you see an error like `Invalid identifier or password`, ensure that:
-1. Your `.env` file is correctly configured with valid Bluesky credentials.
-2. Your Bluesky account is active and accessible.
+Docker simplifies setup and eliminates dependency conflicts. Here’s how to use Docker:
 
-### Rate Limit Errors
-If the bot encounters rate limits (status code `429`), it will automatically pause and retry after the required wait time.
+### What is Docker?
+Docker allows you to package an application and its dependencies into a container, ensuring it runs consistently across environments.
 
-### Missing Dependencies
-If the bot fails to start due to missing modules, run:
-```bash
-npm install
-```
-
-## Additional Notes
-- The bot uses placeholders for RSS feeds and requires manual updates in `bot.mjs` to set the actual feeds.
-- `.env` is intentionally included in the repository because it contains only placeholder data.
-
-## License
-This project is licensed under the ISC License.
-
-## Contributing
-Contributions are welcome! Open an issue or submit a pull request if you'd like to help improve the project.
-
-
-### Docker Support
-
-You can use Docker to run the project without installing Node.js or its dependencies locally. Here’s how:
-
-#### 1. Build the Docker Image
-In the project directory (where your `Dockerfile` is located), run the following command to build the Docker image:
+### Step 1: Build the Docker Image
+Navigate to the project directory using the terminal. This is the folder where your `Dockerfile` is located, typically the root directory of the repository you cloned. Then, run the following command:
 ```bash
 docker build -t bluebot .
 ```
+- `docker build`: Tells Docker to build an image.
+- `-t bluebot`: Names the image "bluebot."
+- `.`: Refers to the current directory.
 
-#### 2. Run the Docker Container
-Start the container using:
+### Step 2: Configure Environment Variables
+Ensure your `.env` file is ready with valid Bluesky credentials.
+
+### Step 3: Run the Docker Container
+Start the container:
 ```bash
-docker run -d --name bluebot-container bluebot
+docker run --env-file .env -d --name bluebot-container bluebot
 ```
-This command:
-- Runs the container in detached mode (`-d`).
-- Names the container `bluebot-container`.
+- `--env-file .env`: Passes environment variables to the container.
+- `-d`: Runs the container in detached mode.
+- `--name bluebot-container`: Names the container.
 
-#### 3. View Logs
-Check the logs to ensure the bot is running correctly:
+### Step 4: View Logs
+Check the logs to ensure the bot is running:
 ```bash
 docker logs bluebot-container
 ```
 
-#### 4. Stop or Remove the Container
-To stop the running container:
+### Step 5: Stop or Remove the Container
+To stop the container:
 ```bash
 docker stop bluebot-container
 ```
@@ -151,8 +109,73 @@ To remove the container:
 docker rm bluebot-container
 ```
 
-#### Optional: Expose HTTP Port
-If you modify the bot to expose an HTTP server for status monitoring, ensure port 3000 is exposed in the Dockerfile and map it when running the container:
+---
+
+## Understanding the Dockerfile
+
+The provided Dockerfile sets up the container for running the bot. Here’s a breakdown:
+
+1. **Base Image**:
+   ```dockerfile
+   FROM node:18
+   ```
+   - Uses the official Node.js 18 image as the base environment.
+
+2. **Set Working Directory**:
+   ```dockerfile
+   WORKDIR /app
+   ```
+   - Defines `/app` as the working directory where all subsequent commands will run.
+
+3. **Install Dependencies**:
+   ```dockerfile
+   COPY package*.json ./
+   RUN npm install --only=production
+   ```
+   - Copies `package.json` and `package-lock.json` into the container and installs required dependencies.
+
+4. **Add Project Files**:
+   ```dockerfile
+   COPY . .
+   ```
+   - Copies all files from your local project directory into the container.
+
+5. **Expose Ports (Optional)**:
+   ```dockerfile
+   EXPOSE 3000
+   ```
+   - Prepares the container to use port 3000. Useful for HTTP monitoring if added later.
+
+6. **Start the Bot**:
+   ```dockerfile
+   CMD ["node", "bot.mjs"]
+   ```
+   - Starts the bot script when the container runs.
+
+---
+
+## Common Issues and Troubleshooting
+
+### Invalid Bluesky Credentials
+If you see `Invalid identifier or password`:
+1. Double-check your `.env` file for correct credentials.
+2. Verify your Bluesky account is active.
+
+### Rate Limit Errors
+If rate limits are encountered (status code `429`), the bot automatically retries after the required wait time.
+
+### Missing Dependencies
+If you encounter missing modules, reinstall them:
 ```bash
-docker run -d -p 3000:3000 --name bluebot-container bluebot
+npm install
 ```
+
+---
+
+## Contributing
+Contributions are welcome! Open an issue or submit a pull request to improve this project.
+
+---
+
+## License
+This project is licensed under the ISC License.
