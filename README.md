@@ -1,7 +1,7 @@
 
 # Bluebot
 
-A bot for posting RSS feed updates to Bluesky using Node.js and Docker.
+A bot for posting RSS feed updates to Bluesky using Node.js (and Docker).
 
 ## Features
 - Fetches RSS feeds and posts new updates to a Bluesky account.
