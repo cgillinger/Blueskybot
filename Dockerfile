@@ -1,20 +1,20 @@
-# Använd Node.js som basbild
+# Use Node.js as the base image
 FROM node:18
 
-# Skapa appkatalogen
+# Set the working directory inside the container
 WORKDIR /app
 
-# Kopiera package.json och package-lock.json till arbetskatalogen
+# Copy package.json and package-lock.json to the working directory
 COPY package*.json ./
 
-# Installera nödvändiga paket
+# Install necessary packages
 RUN npm install
 
-# Kopiera hela projektet till arbetskatalogen
+# Copy the entire project to the working directory
 COPY . .
 
-# Exponera port (om du vill använda en HTTP-server för status)
+# Expose port (optional; useful for an HTTP server for status monitoring)
 EXPOSE 3000
 
-# Starta skriptet
+# Start the script
 CMD ["node", "bluesky_rss_bot.js"]
