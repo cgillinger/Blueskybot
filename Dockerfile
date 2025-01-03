@@ -1,21 +1,16 @@
-
-# Use Node.js as the base image
 FROM node:18
 
-# Set the working directory inside the container
+# Set working directory
 WORKDIR /app
 
-# Copy package.json and package-lock.json to the working directory
+# Copy package files
 COPY package*.json ./
 
-# Install necessary packages
+# Install dependencies
 RUN npm install --only=production
 
-# Copy the entire project to the working directory
+# Copy project files
 COPY . .
 
-# Expose port (optional; useful for an HTTP server for status monitoring)
-EXPOSE 3000
-
-# Start the script
+# Start the bot
 CMD ["node", "bot.mjs"]

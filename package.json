@@ -1,7 +1,7 @@
 {
-  "name": "bluebot",
+  "name": "blueskybot",
   "version": "1.0.0",
-  "description": "A bot for posting RSS feed updates to Bluesky using Node.js and Docker.",
+  "description": "A bot for posting RSS feed updates to Bluesky using Node.js and Docker",
   "main": "bot.mjs",
   "type": "module",
   "scripts": {
@@ -16,7 +16,7 @@
     "Docker"
   ],
   "author": "Christian Gillinger",
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
     "@atproto/api": "^0.13.16",
     "cheerio": "^1.0.0",
@@ -24,5 +24,12 @@
     "node-cron": "^3.0.3",
     "node-fetch": "^3.3.2",
     "rss-parser": "^3.13.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cgillinger/blueskybot.git"
+  },
+  "bugs": {
+    "url": "https://github.com/cgillinger/blueskybot/issues"
   }
 }

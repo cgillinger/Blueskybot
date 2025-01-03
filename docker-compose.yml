@@ -1,9 +1,9 @@
 version: '3'
 services:
-  bluesky_rss_bot:
+  blueskybot:
     build: .
-    container_name: bluesky_rss_bot
-    env_file: .env  # Ladda miljövariabler från .env-filen
+    container_name: blueskybot
+    env_file: .env
     volumes:
-      - /volume1/docker/bluebot:/app  # Mappar mappen på NAS till containern
+      - /volume1/docker/blueskybot:/app
     restart: always
