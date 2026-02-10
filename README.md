@@ -70,7 +70,7 @@ const RSS_FEEDS = [
 npm start
 ```
 
-The bot polls every 5 minutes and posts articles published within the last hour.
+The bot polls every minute and posts articles published within the last hour. Conditional HTTP requests (ETag/Last-Modified) keep unchanged polls near-zero cost.
 
 ## Docker
 
@@ -101,7 +101,7 @@ All configuration constants are defined at the top of `bot.mjs`:
 
 | Constant                    | Default    | Description                                 |
 |-----------------------------|------------|---------------------------------------------|
-| `POLL_INTERVAL_MS`          | `300000`   | Polling interval (5 min)                    |
+| `POLL_INTERVAL_MS`          | `60000`    | Polling interval (1 min)                    |
 | `PUBLICATION_WINDOW_MS`     | `3600000`  | Only post articles newer than this (1 hour) |
 | `MAX_TRACKED_LINKS_PER_FEED`| `20`       | Duplicate tracking buffer per feed          |
 | `FETCH_TIMEOUT_MS`          | `15000`    | HTTP request timeout (15 sec)               |
