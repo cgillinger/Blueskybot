@@ -21,18 +21,40 @@ const RATE_LIMIT_API_WINDOW_MS = 5 * 60 * 1000;  // 5 minutes
 const MAX_API_CALLS_PER_5_MINUTES = 3000;
 const MAX_CREATES_PER_HOUR = 1666;
 
-/**
- * RSS feed configuration
- * Replace the placeholder URLs with the actual RSS feed URLs you want to monitor.
- * Optional `title` is used to prefix posts from each feed for easier identification.
- */
-const RSS_FEEDS = [
-  { url: 'https://example.com/rss-feed-1.xml', title: 'Example Feed 1' },
-  { url: 'https://example.com/rss-feed-2.xml', title: 'Example Feed 2' },
-];
-
-// File to store links to the last posted entries (to avoid duplicate posts)
+// File paths
+const FEEDS_FILE = 'feeds.txt';
 const LAST_POSTED_LINKS_FILE = 'lastPostedLinks.json';
+
+/**
+ * Load RSS feeds from feeds.txt.
+ * Format: one feed per line, optional title after " | ".
+ * Lines starting with # and empty lines are ignored.
+ */
+async function loadFeeds() {
+  let content;
+  try {
+    content = await fs.readFile(FEEDS_FILE, 'utf-8');
+  } catch {
+    console.error(`Missing ${FEEDS_FILE} — copy feeds.txt.example to feeds.txt and add your feeds.`);
+    process.exit(1);
+  }
+
+  const feeds = content
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line && !line.startsWith('#'))
+    .map(line => {
+      const [url, title] = line.split('|').map(part => part.trim());
+      return { url, title: title || null };
+    });
+
+  if (feeds.length === 0) {
+    console.error(`No feeds found in ${FEEDS_FILE}. Add at least one RSS feed URL.`);
+    process.exit(1);
+  }
+
+  return feeds;
+}
 
 // Initialize Bluesky agent with service URL
 const agent = new BskyAgent({ service: 'https://bsky.social' });
@@ -296,11 +318,11 @@ async function processFeed(feed) {
  * Main function to process RSS feeds.
  * Maintains a persistent session across poll cycles.
  */
-async function postLatestRSSItems() {
+async function postLatestRSSItems(feeds) {
   try {
     await ensureLoggedIn();
 
-    for (const feed of RSS_FEEDS) {
+    for (const feed of feeds) {
       try {
         await processFeed(feed);
       } catch (error) {
@@ -321,6 +343,8 @@ async function postLatestRSSItems() {
 
 // Start the bot
 console.log('Bot starting up...');
+const feeds = await loadFeeds();
+console.log(`Loaded ${feeds.length} feed(s) from ${FEEDS_FILE}.`);
 lastPostedLinks = await loadLastPostedLinks();
-postLatestRSSItems();
-setInterval(postLatestRSSItems, POLL_INTERVAL_MS);
+postLatestRSSItems(feeds);
+setInterval(() => postLatestRSSItems(feeds), POLL_INTERVAL_MS);
