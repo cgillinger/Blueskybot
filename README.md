@@ -1,209 +1,168 @@
 # Blueskybot
 
-A bot for posting RSS feed updates to Bluesky using Node.js or Docker.
+[![Node.js](https://img.shields.io/badge/Node.js-18+-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![Bluesky](https://img.shields.io/badge/Bluesky-AT%20Protocol-0085ff?logo=bluesky&logoColor=white)](https://bsky.app/)
 
----
+A lightweight Node.js bot that monitors RSS feeds and posts new articles to [Bluesky](https://bsky.app) with rich embed cards.
 
 ## Features
 
-- Fetches RSS feeds and posts new updates to a Bluesky account.
-- Avoids duplicates by locally tracking previously published links.
-- Retrieves metadata (title, description, thumbnail) for embedded links.
-- Adheres to Bluesky's API rate limits.
-- Configurable settings for frequency, duplicate-checking, and relevance.
+- Monitors multiple RSS feeds on a configurable polling interval
+- Posts new articles with Open Graph metadata (title, description, thumbnail)
+- Tracks posted links locally to prevent duplicates
+- Persistent session management (logs in once, re-authenticates on expiry)
+- Respects Bluesky API rate limits with separate read/write tracking
+- Request timeouts and URL validation for reliability and security
+- Runs as non-root user in Docker with health checks
 
----
+## Prerequisites
+
+- [Node.js](https://nodejs.org/) 18+ (or [Docker](https://www.docker.com/))
+- A [Bluesky](https://bsky.app) account
+- One or more RSS feed URLs to monitor
 
 ## Quick Start
 
-Choose your preferred setup method:
-
-1. **[Standard Node.js Installation](#nodejs-installation)**: If you're comfortable with Node.js.
-2. **[Docker Installation](#docker-installation)**: Recommended to avoid dependency issues.
-
----
-
-## Node.js Installation
-
-### Step 1: Clone the Repository
+### 1. Clone and install
 
 ```bash
 git clone https://github.com/cgillinger/Blueskybot.git
 cd Blueskybot
-```
-
-### Step 2: Install Dependencies
-
-Install all required packages:
-
-```bash
 npm install
 ```
 
-### Step 3: Configure the `.env` File
-
-- Locate the `.env.example` file in the repository and rename it to `.env`:
+### 2. Configure credentials
 
 ```bash
-mv .env.example .env
+cp .env.example .env
 ```
 
-- Open the `.env` file and replace the placeholder values with your Bluesky credentials:
+Edit `.env` with your Bluesky credentials:
 
 ```env
-BLUESKY_USERNAME=your_email@provider.com
-BLUESKY_PASSWORD=your_secure_password
+BLUESKY_USERNAME=your_handle@bsky.social
+BLUESKY_PASSWORD=your_app_password
 ```
 
-> **Note**: The `.env` file must remain in the project directory for the bot to function.
+> **Tip:** Use an [App Password](https://bsky.app/settings/app-passwords) instead of your main password.
 
-### Step 4: Update RSS Feeds
+### 3. Configure RSS feeds
 
-- Open `bot.mjs` in a text editor.
-- Update the `RSS_FEEDS` array with the RSS feeds you want to monitor:
+Edit the `RSS_FEEDS` array in `bot.mjs`:
 
 ```javascript
 const RSS_FEEDS = [
-  { url: 'https://example.com/rss-feed-1.xml', title: 'Example Feed 1' },
-  { url: 'https://example.com/rss-feed-2.xml', title: 'Example Feed 2' },
+  { url: 'https://example.com/feed.xml', title: 'Example' },
+  { url: 'https://another.com/rss',      title: 'Another Feed' },
 ];
 ```
 
-#### Important Notes:
-- Ensure every URL is valid and points to an active RSS feed.
-- Titles are optional but help you identify each feed.
-- Do not add extra fields beyond `url` and `title`.
+| Field   | Required | Description                              |
+|---------|----------|------------------------------------------|
+| `url`   | Yes      | Full URL to the RSS feed                 |
+| `title` | No       | Prefix label shown in the Bluesky post   |
 
-### Step 5: Start the Bot
-
-Run the bot:
+### 4. Run
 
 ```bash
 npm start
 ```
 
----
+The bot polls every 5 minutes and posts articles published within the last hour.
 
-## Docker Installation
+## Docker
 
-Docker simplifies setup and avoids dependency issues. Here’s how to get started:
+### Using Docker Compose (recommended)
 
-### Install Docker
+```bash
+cp .env.example .env          # configure credentials
+docker compose up -d --build
+```
 
-1. **Windows**:
-   - Download and install [Docker Desktop for Windows](https://www.docker.com/products/docker-desktop/).
-   - Ensure WSL2 is enabled if you are using Windows 10 or later.
+```bash
+docker compose logs -f        # follow logs
+docker compose down           # stop
+```
 
-2. **MacOS**:
-   - Download and install [Docker Desktop for Mac](https://www.docker.com/products/docker-desktop/).
-   - Supports macOS Catalina and later.
-
-3. **Linux**:
-   - Follow the installation instructions for your distribution:
-     - [Ubuntu](https://docs.docker.com/engine/install/ubuntu/)
-     - [Debian](https://docs.docker.com/engine/install/debian/)
-     - [Fedora](https://docs.docker.com/engine/install/fedora/)
-     - [CentOS](https://docs.docker.com/engine/install/centos/)
-
-> **Note**: Verify that Docker and Docker Compose are working correctly by running `docker --version` and `docker compose version`.
-
-### Step 1: Build the Docker Image
-
-Navigate to the project directory in the terminal (the folder where the `Dockerfile` is located). Run:
+### Using Docker directly
 
 ```bash
 docker build -t blueskybot .
+docker run -d --name blueskybot --env-file .env --restart always blueskybot
 ```
 
-### Step 2: Configure Environment Variables
+The container uses `node:18-alpine`, runs as a non-root user, and includes a health check.
 
-Ensure your `.env` file is updated with valid Bluesky credentials.
+## Configuration
 
-### Step 3: Start the Docker Container
+All configuration constants are defined at the top of `bot.mjs`:
 
-Start the container:
+| Constant                    | Default    | Description                                 |
+|-----------------------------|------------|---------------------------------------------|
+| `POLL_INTERVAL_MS`          | `300000`   | Polling interval (5 min)                    |
+| `PUBLICATION_WINDOW_MS`     | `3600000`  | Only post articles newer than this (1 hour) |
+| `MAX_TRACKED_LINKS_PER_FEED`| `20`       | Duplicate tracking buffer per feed          |
+| `FETCH_TIMEOUT_MS`          | `15000`    | HTTP request timeout (15 sec)               |
+| `MAX_IMAGE_SIZE`            | `1000000`  | Max thumbnail size in bytes (1 MB)          |
 
-```bash
-docker run --env-file .env -d --name blueskybot-container blueskybot
+## Project Structure
+
+```
+Blueskybot/
+├── bot.mjs              # Main application
+├── Dockerfile           # Container image (Alpine, non-root)
+├── docker-compose.yml   # Compose orchestration
+├── package.json         # Dependencies and scripts
+├── .env.example         # Credential template
+├── .gitignore
+├── LICENSE              # MIT
+└── README.md
 ```
 
-### Step 4: View Logs
+## How It Works
 
-Check the logs to verify the bot is running:
-
-```bash
-docker logs blueskybot-container
+```
+┌─────────────┐     ┌──────────────┐     ┌─────────────────┐
+│  RSS Feeds  │────>│   bot.mjs    │────>│  Bluesky (AT     │
+│  (polling)  │     │  parse/filter│     │  Protocol API)   │
+└─────────────┘     └──────┬───────┘     └─────────────────┘
+                           │
+                    ┌──────┴───────┐
+                    │ OG metadata  │
+                    │ fetch + image│
+                    │ upload       │
+                    └──────┬───────┘
+                           │
+                    ┌──────┴───────┐
+                    │ lastPosted   │
+                    │ Links.json   │
+                    └──────────────┘
 ```
 
-### Step 5: Stop or Remove the Container
+1. **Poll** RSS feeds at a fixed interval
+2. **Filter** articles to those published within the last hour
+3. **Deduplicate** against locally stored posted links
+4. **Fetch** Open Graph metadata (title, description, image) from article URL
+5. **Upload** thumbnail image as blob to Bluesky
+6. **Post** to Bluesky with `app.bsky.embed.external` embed card
+7. **Persist** the posted link to avoid duplicates on restart
 
-To stop the container:
+## Troubleshooting
 
-```bash
-docker stop blueskybot-container
-```
-
-To remove the container:
-
-```bash
-docker rm blueskybot-container
-```
-
----
-
-## File Overview
-
-### Key Files
-
-- **`bot.mjs`**: The main script performing all bot functions.
-- **`package.json`**: Lists the project’s dependencies.
-- **`Dockerfile`**: Instructions for building the Docker image.
-- **`.env`**: Contains environment variables used by the bot.
-
-### Project Structure
-
-```plaintext
-/
-├── bot.mjs          # Main script
-├── Dockerfile       # Docker configuration
-├── docker-compose.yml # Alternative Docker configuration (optional)
-├── LICENSE          # Project license (MIT)
-├── package.json     # Dependencies
-├── README.md        # Documentation
-```
-
----
-
-## Common Issues and Troubleshooting
-
-### Invalid Bluesky Credentials
-
-If you see `Invalid identifier or password`:
-1. Verify that your `.env` file contains correct credentials.
-2. Ensure your Bluesky account is active.
-
-### API Rate Limits
-
-If API rate limits are encountered (status code `429`), the bot automatically waits until the limit resets.
-
-### Missing Dependencies
-
-If modules are missing, reinstall them:
-
-```bash
-npm install
-```
-
----
+| Problem | Solution |
+|---------|----------|
+| `Invalid identifier or password` | Verify `.env` credentials. Use an [App Password](https://bsky.app/settings/app-passwords). |
+| `API rate limit reached` | The bot automatically waits and retries. No action needed. |
+| Thumbnails missing on some posts | The source site may lack `og:image` tags, or the image exceeds 1 MB. |
+| `FETCH_TIMEOUT` errors | The target site is slow or unreachable. The post will still be created without a thumbnail. |
+| Container unhealthy | Check logs with `docker compose logs` — likely a credential or network issue. |
 
 ## Contributing
 
-Contributions are welcome! Open an issue or submit a pull request to improve this project.
-
----
+Contributions are welcome! Please open an [issue](https://github.com/cgillinger/Blueskybot/issues) or submit a pull request.
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
-
-
+[MIT](LICENSE) &copy; Christian Gillinger
