@@ -50,19 +50,19 @@ BLUESKY_PASSWORD=your_app_password
 
 ### 3. Configure RSS feeds
 
-Edit the `RSS_FEEDS` array in `bot.mjs`:
-
-```javascript
-const RSS_FEEDS = [
-  { url: 'https://example.com/feed.xml', title: 'Example' },
-  { url: 'https://another.com/rss',      title: 'Another Feed' },
-];
+```bash
+cp feeds.txt.example feeds.txt
 ```
 
-| Field   | Required | Description                              |
-|---------|----------|------------------------------------------|
-| `url`   | Yes      | Full URL to the RSS feed                 |
-| `title` | No       | Prefix label shown in the Bluesky post   |
+Edit `feeds.txt` — one feed per line, no quotes or brackets needed:
+
+```
+https://example.com/feed.xml | Example News
+https://another.site/rss     | Another Feed
+https://minimal.org/rss
+```
+
+Lines starting with `#` are comments. The title after `|` is optional — if provided, it prefixes the Bluesky post.
 
 ### 4. Run
 
@@ -78,6 +78,7 @@ The bot polls every minute and posts articles published within the last hour. Co
 
 ```bash
 cp .env.example .env          # configure credentials
+cp feeds.txt.example feeds.txt # configure feeds
 docker compose up -d --build
 ```
 
@@ -112,6 +113,8 @@ All configuration constants are defined at the top of `bot.mjs`:
 ```
 Blueskybot/
 ├── bot.mjs              # Main application
+├── feeds.txt            # Your RSS feeds (not tracked by git)
+├── feeds.txt.example    # Feed configuration template
 ├── Dockerfile           # Container image (Alpine, non-root)
 ├── docker-compose.yml   # Compose orchestration
 ├── package.json         # Dependencies and scripts

@@ -1,0 +1,17 @@
+# Blueskybot — RSS Feed Configuration
+#
+# Add one feed per line. Empty lines and lines starting with # are ignored.
+#
+# Format:
+#   URL
+#   URL | Title
+#
+# The title is optional. If provided, it prefixes the Bluesky post.
+#
+# Examples:
+#   https://example.com/feed.xml
+#   https://example.com/feed.xml | Example News
+#   https://another.site/rss     | Another Feed
+
+https://example.com/rss-feed-1.xml | Example Feed 1
+https://example.com/rss-feed-2.xml | Example Feed 2
