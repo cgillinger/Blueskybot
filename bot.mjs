@@ -10,13 +10,14 @@ import * as cheerio from 'cheerio';
 dotenv.config();
 
 // Configuration constants
-const POLL_INTERVAL_MS = 5 * 60 * 1000;
-const PUBLICATION_WINDOW_MS = 60 * 60 * 1000;
+const POLL_INTERVAL_MS = 60 * 1000;              // 1 minute — RSS conditional requests make this cheap
+const PUBLICATION_WINDOW_MS = 60 * 60 * 1000;    // 1 hour
 const MAX_TRACKED_LINKS_PER_FEED = 20;
 const FETCH_TIMEOUT_MS = 15_000;
-const MAX_IMAGE_SIZE = 1_000_000; // 1 MB (Bluesky limit)
+const MAX_IMAGE_SIZE = 1_000_000;                 // 1 MB (Bluesky limit)
 
 // Rate limit configuration based on Bluesky's API documentation
+const RATE_LIMIT_API_WINDOW_MS = 5 * 60 * 1000;  // 5 minutes
 const MAX_API_CALLS_PER_5_MINUTES = 3000;
 const MAX_CREATES_PER_HOUR = 1666;
 
@@ -44,6 +45,9 @@ let createActionCount = 0;
 let lastApiReset = Date.now();
 let lastCreateReset = Date.now();
 let isLoggedIn = false;
+
+// Cache for conditional RSS requests (ETag / Last-Modified per feed URL)
+const feedHttpCache = new Map();
 
 /**
  * Fetch with timeout to prevent hanging requests.
@@ -90,7 +94,7 @@ async function saveLastPostedLinks() {
 async function rateLimit(isCreate = false) {
   const now = Date.now();
 
-  if (now - lastApiReset >= POLL_INTERVAL_MS) {
+  if (now - lastApiReset >= RATE_LIMIT_API_WINDOW_MS) {
     apiCallCount = 0;
     lastApiReset = now;
   }
@@ -100,7 +104,7 @@ async function rateLimit(isCreate = false) {
   }
 
   if (apiCallCount >= MAX_API_CALLS_PER_5_MINUTES) {
-    const waitTime = POLL_INTERVAL_MS - (now - lastApiReset);
+    const waitTime = RATE_LIMIT_API_WINDOW_MS - (now - lastApiReset);
     console.log(`API rate limit reached. Waiting ${Math.ceil(waitTime / 1000)}s.`);
     await new Promise(resolve => setTimeout(resolve, waitTime));
     apiCallCount = 0;
@@ -165,6 +169,33 @@ async function ensureLoggedIn() {
 }
 
 /**
+ * Fetch an RSS feed using conditional HTTP requests (ETag / If-Modified-Since).
+ * Returns parsed feed data if the feed has new content, or null if unchanged (304).
+ * This keeps polling cheap: unchanged feeds return ~200 bytes instead of the full XML.
+ */
+async function fetchFeedIfModified(feedUrl) {
+  const cached = feedHttpCache.get(feedUrl);
+  const headers = {};
+  if (cached?.etag) headers['If-None-Match'] = cached.etag;
+  if (cached?.lastModified) headers['If-Modified-Since'] = cached.lastModified;
+
+  const response = await fetchWithTimeout(feedUrl, { headers });
+
+  if (response.status === 304) {
+    return null;
+  }
+
+  // Update cache with new headers
+  feedHttpCache.set(feedUrl, {
+    etag: response.headers.get('etag') || null,
+    lastModified: response.headers.get('last-modified') || null,
+  });
+
+  const xml = await response.text();
+  return parser.parseString(xml);
+}
+
+/**
  * Fetch metadata for a link (title, description, and image) for embedding in posts.
  * Follows Bluesky's app.bsky.embed.external specification.
  * @param {string} url - The URL to fetch metadata for
@@ -222,12 +253,17 @@ async function fetchEmbedCard(url) {
 
 /**
  * Process a single RSS feed and post new entries from the last hour.
+ * Uses conditional HTTP requests — if the feed hasn't changed, skips immediately.
  */
 async function processFeed(feed) {
   const { url: feedUrl, title: feedTitle } = feed;
-  console.log(`Fetching RSS feed: ${feedUrl}`);
 
-  const feedData = await parser.parseURL(feedUrl);
+  const feedData = await fetchFeedIfModified(feedUrl);
+
+  if (!feedData) {
+    return; // Feed unchanged (304) — nothing to do
+  }
+
   let newPostsFound = false;
 
   for (const item of feedData.items) {
