@@ -153,10 +153,11 @@ function isPublishedWithinWindow(pubDate) {
 }
 
 /**
- * Check if a link has already been posted.
+ * Check if a link has already been posted (across ALL feeds).
+ * Different feeds can contain the same article, so we check globally.
  */
 function isAlreadyPosted(feedUrl, link) {
-  return lastPostedLinks[feedUrl]?.includes(link) ?? false;
+  return Object.values(lastPostedLinks).some(links => links.includes(link));
 }
 
 /**
