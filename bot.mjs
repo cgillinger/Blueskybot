@@ -12,7 +12,7 @@ dotenv.config();
 // Configuration constants
 const POLL_INTERVAL_MS = 60 * 1000;              // 1 minute — RSS conditional requests make this cheap
 const PUBLICATION_WINDOW_MS = 60 * 60 * 1000;    // 1 hour
-const MAX_TRACKED_LINKS_PER_FEED = 20;
+const MAX_TRACKED_LINKS_PER_FEED = 100;
 const FETCH_TIMEOUT_MS = 15_000;
 const MAX_IMAGE_SIZE = 1_000_000;                 // 1 MB (Bluesky limit)
 
@@ -166,10 +166,21 @@ function recordPostedLink(feedUrl, link) {
   if (!lastPostedLinks[feedUrl]) {
     lastPostedLinks[feedUrl] = [];
   }
-  lastPostedLinks[feedUrl].push(link);
+  if (!lastPostedLinks[feedUrl].includes(link)) {
+    lastPostedLinks[feedUrl].push(link);
+  }
   if (lastPostedLinks[feedUrl].length > MAX_TRACKED_LINKS_PER_FEED) {
     lastPostedLinks[feedUrl].shift();
   }
+}
+
+/**
+ * Remove a link from the posted list (rollback on failed post).
+ */
+function unrecordPostedLink(feedUrl, link) {
+  if (!lastPostedLinks[feedUrl]) return;
+  const idx = lastPostedLinks[feedUrl].indexOf(link);
+  if (idx !== -1) lastPostedLinks[feedUrl].splice(idx, 1);
 }
 
 /**
@@ -293,20 +304,30 @@ async function processFeed(feed) {
       continue;
     }
 
-    const embedCard = await fetchEmbedCard(item.link);
-    await rateLimit(true);
-
-    const postText = `${feedTitle ? `${feedTitle}: ` : ''}${item.title}\n\n${item.link}`;
-    await agent.post({
-      text: postText,
-      embed: embedCard || undefined,
-      langs: ['en'],
-    });
-
-    console.log(`Posted: ${postText}`);
+    // Record link BEFORE posting to close the race-condition window.
+    // If another cycle checks while we're posting, it will see the link as taken.
     recordPostedLink(feedUrl, item.link);
     await saveLastPostedLinks();
-    newPostsFound = true;
+
+    try {
+      const embedCard = await fetchEmbedCard(item.link);
+      await rateLimit(true);
+
+      const postText = `${feedTitle ? `${feedTitle}: ` : ''}${item.title}\n\n${item.link}`;
+      await agent.post({
+        text: postText,
+        embed: embedCard || undefined,
+        langs: ['en'],
+      });
+
+      console.log(`Posted: ${postText}`);
+      newPostsFound = true;
+    } catch (postError) {
+      // Post failed — rollback so the link can be retried next cycle
+      console.error(`Failed to post ${item.link}: ${postError.message}`);
+      unrecordPostedLink(feedUrl, item.link);
+      await saveLastPostedLinks();
+    }
   }
 
   if (!newPostsFound) {
@@ -341,10 +362,21 @@ async function postLatestRSSItems(feeds) {
   }
 }
 
+/**
+ * Scheduling loop using setTimeout chaining.
+ * Guarantees the next cycle only starts after the previous one finishes,
+ * eliminating the race condition that setInterval would cause.
+ */
+async function runLoop(feeds) {
+  while (true) {
+    await postLatestRSSItems(feeds);
+    await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS));
+  }
+}
+
 // Start the bot
 console.log('Bot starting up...');
 const feeds = await loadFeeds();
 console.log(`Loaded ${feeds.length} feed(s) from ${FEEDS_FILE}.`);
 lastPostedLinks = await loadLastPostedLinks();
-postLatestRSSItems(feeds);
-setInterval(() => postLatestRSSItems(feeds), POLL_INTERVAL_MS);
+runLoop(feeds);
