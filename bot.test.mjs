@@ -533,3 +533,79 @@ test('generateAltText (gemini) ignores thought parts and joins answer text', asy
   const result = await generateAltText(Buffer.from('x'), 'image/jpeg', mockFetch);
   assert.equal(result, 'En röd rektangel');
 });
+
+// ---------------------------------------------------------------------------
+// generateAltText (Mistral provider and backup provider)
+// ---------------------------------------------------------------------------
+
+function withEnv(vars, fn) {
+  return async (t) => {
+    const prev = Object.fromEntries(Object.keys(vars).map(k => [k, process.env[k]]));
+    Object.assign(process.env, vars);
+    try {
+      await fn(t);
+    } finally {
+      for (const [k, v] of Object.entries(prev)) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+  };
+}
+
+test('generateAltText (mistral) sends chat-completions request with ministral model', withEnv({ ALT_TEXT_PROVIDER: 'mistral' }, async () => {
+  let captured;
+  const mockFetch = async (url, options) => {
+    captured = { url, body: JSON.parse(options.body), headers: options.headers };
+    return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: ' En katt ' } }] }) };
+  };
+  const buf = Buffer.from('fake-image-data');
+  const result = await generateAltText(buf, 'image/jpeg', mockFetch);
+
+  assert.equal(result, 'En katt');
+  assert.equal(captured.url, 'https://api.mistral.ai/v1/chat/completions');
+  assert.equal(captured.body.model, 'ministral-14b-latest');
+  assert.equal(captured.body.messages[0].content[0].image_url.url, `data:image/jpeg;base64,${buf.toString('base64')}`);
+  assert.ok(captured.headers.Authorization.startsWith('Bearer '));
+}));
+
+test('generateAltText (mistral) joins text chunks when content is an array', withEnv({ ALT_TEXT_PROVIDER: 'mistral' }, async () => {
+  const mockFetch = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({ choices: [{ message: { content: [{ type: 'text', text: 'En ' }, { type: 'text', text: 'hund' }] } }] }),
+  });
+  assert.equal(await generateAltText(Buffer.from('x'), 'image/jpeg', mockFetch), 'En hund');
+}));
+
+test('generateAltText falls back to the backup provider when the primary fails', withEnv({ ALT_TEXT_PROVIDER: 'gemini', ALT_TEXT_FALLBACK_PROVIDER: 'mistral' }, async () => {
+  const urls = [];
+  const mockFetch = async (url) => {
+    urls.push(url);
+    if (url.includes('generativelanguage')) return { ok: false, status: 404 };
+    return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: 'Från Mistral' } }] }) };
+  };
+  const result = await generateAltText(Buffer.from('x'), 'image/jpeg', mockFetch, 1);
+
+  assert.equal(result, 'Från Mistral');
+  assert.equal(urls.length, 2);
+  assert.ok(urls[0].includes('generativelanguage'));
+  assert.equal(urls[1], 'https://api.mistral.ai/v1/chat/completions');
+}));
+
+test('generateAltText does not call the backup when the primary succeeds', withEnv({ ALT_TEXT_PROVIDER: 'gemini', ALT_TEXT_FALLBACK_PROVIDER: 'mistral' }, async () => {
+  let calls = 0;
+  const mockFetch = async () => {
+    calls++;
+    return { ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: 'Från Gemini' }] } }] }) };
+  };
+  assert.equal(await generateAltText(Buffer.from('x'), 'image/jpeg', mockFetch), 'Från Gemini');
+  assert.equal(calls, 1);
+}));
+
+test('generateAltText returns empty string when primary and backup both fail', withEnv({ ALT_TEXT_PROVIDER: 'gemini', ALT_TEXT_FALLBACK_PROVIDER: 'mistral' }, async () => {
+  let calls = 0;
+  const mockFetch = async () => { calls++; return { ok: false, status: 500 }; };
+  assert.equal(await generateAltText(Buffer.from('x'), 'image/jpeg', mockFetch, 1), '');
+  assert.equal(calls, 2);
+}));

@@ -30,9 +30,12 @@ const ALT_TEXT_LANGUAGE = process.env.ALT_TEXT_LANGUAGE || 'en';
 const ALT_TEXT_PROVIDER = process.env.ALT_TEXT_PROVIDER || 'gemini';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
+const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY || '';
 // Model IDs are configurable so a provider retiring a model only needs an .env change
 const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+// Mistral's free plan covers the ministral-* models (mistral-* answer 429 there)
+const MISTRAL_MODEL = process.env.MISTRAL_MODEL || 'ministral-14b-latest';
 const ALT_IMAGE_MAX_DIMENSION = 256;  // was 512 — halves Gemini token cost
 const ALT_TEXT_API_ATTEMPTS = 3;      // attempts per alt-text API call on HTTP 429
 
@@ -354,10 +357,35 @@ function buildAltTextPrompt(context) {
   return prompt;
 }
 
+// OpenAI and Mistral share the chat-completions request/response format
+function chatCompletionsBody(model) {
+  return (base64Data, mimeType, prompt) => ({
+    model,
+    max_tokens: 300,
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64Data}` } },
+        { type: 'text', text: prompt },
+      ],
+    }],
+  });
+}
+
+function chatCompletionsText(data) {
+  const content = data?.choices?.[0]?.message?.content;
+  // Content is usually a string, but may be an array of typed chunks
+  if (Array.isArray(content)) {
+    return content.filter(chunk => chunk.type === 'text').map(chunk => chunk.text).join('');
+  }
+  return content;
+}
+
 const ALT_TEXT_PROVIDERS = {
   gemini: {
     name: 'Gemini',
     url: `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent`,
+    apiKey: () => GEMINI_API_KEY,
     headers: () => ({ 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY }),
     body: (base64Data, mimeType, prompt) => ({
       contents: [{
@@ -376,26 +404,34 @@ const ALT_TEXT_PROVIDERS = {
   openai: {
     name: 'OpenAI',
     url: 'https://api.openai.com/v1/chat/completions',
+    apiKey: () => OPENAI_API_KEY,
     headers: () => ({ 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENAI_API_KEY}` }),
-    body: (base64Data, mimeType, prompt) => ({
-      model: OPENAI_MODEL,
-      max_tokens: 300,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'image_url', image_url: { url: `data:${mimeType};base64,${base64Data}` } },
-          { type: 'text', text: prompt },
-        ],
-      }],
-    }),
-    extractText: data => data?.choices?.[0]?.message?.content,
+    body: chatCompletionsBody(OPENAI_MODEL),
+    extractText: chatCompletionsText,
+  },
+  mistral: {
+    name: 'Mistral',
+    url: 'https://api.mistral.ai/v1/chat/completions',
+    apiKey: () => MISTRAL_API_KEY,
+    headers: () => ({ 'Content-Type': 'application/json', 'Authorization': `Bearer ${MISTRAL_API_KEY}` }),
+    body: chatCompletionsBody(MISTRAL_MODEL),
+    extractText: chatCompletionsText,
   },
 };
 
 /**
- * Generate alt text using the configured provider (ALT_TEXT_PROVIDER: gemini | openai).
- * Returns a trimmed string ≤ 300 chars, or '' on any error (graceful degradation).
- * Retries up to 3 times with exponential backoff on HTTP 429.
+ * Resolve a provider name from the environment. Unknown or empty names fall back
+ * to `fallback` (Gemini for the primary provider, none for the backup).
+ */
+function resolveAltTextProvider(name, fallback = null) {
+  const key = (name || '').trim().toLowerCase();
+  return ALT_TEXT_PROVIDERS[key] ? key : fallback;
+}
+
+/**
+ * Generate alt text with the configured provider (ALT_TEXT_PROVIDER: gemini | openai | mistral).
+ * If that fails and ALT_TEXT_FALLBACK_PROVIDER is set, the backup provider is tried next.
+ * Returns a trimmed string ≤ 300 chars, or '' when every provider failed (graceful degradation).
  *
  * @param {Buffer} imageBuffer
  * @param {string} mimeType
@@ -404,10 +440,29 @@ const ALT_TEXT_PROVIDERS = {
  * @param {string} [context] - article title/description to help identify people and events
  */
 export async function generateAltText(imageBuffer, mimeType, fetchFn = fetchWithAltTextTimeout, retryDelayMs = 1000, context = '') {
-  const provider = process.env.ALT_TEXT_PROVIDER === 'openai'
-    ? ALT_TEXT_PROVIDERS.openai
-    : ALT_TEXT_PROVIDERS.gemini;
-  const requestBody = provider.body(imageBuffer.toString('base64'), mimeType, buildAltTextPrompt(context));
+  const primary = resolveAltTextProvider(process.env.ALT_TEXT_PROVIDER, 'gemini');
+  const backup = resolveAltTextProvider(process.env.ALT_TEXT_FALLBACK_PROVIDER);
+  const chain = backup && backup !== primary ? [primary, backup] : [primary];
+
+  const base64Data = imageBuffer.toString('base64');
+  const prompt = buildAltTextPrompt(context);
+
+  for (const [i, name] of chain.entries()) {
+    const text = await requestAltText(ALT_TEXT_PROVIDERS[name], base64Data, mimeType, prompt, fetchFn, retryDelayMs);
+    if (text) return text;
+    if (i + 1 < chain.length) {
+      console.warn(`Falling back to ${ALT_TEXT_PROVIDERS[chain[i + 1]].name} for alt text.`);
+    }
+  }
+  return '';
+}
+
+/**
+ * Call one alt-text provider. Retries up to 3 times with exponential backoff on HTTP 429.
+ * Returns the alt text, or '' on any error.
+ */
+async function requestAltText(provider, base64Data, mimeType, prompt, fetchFn, retryDelayMs) {
+  const requestBody = provider.body(base64Data, mimeType, prompt);
 
   for (let attempt = 0; attempt < ALT_TEXT_API_ATTEMPTS; attempt++) {
     try {
@@ -777,14 +832,20 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const commit = process.env.GIT_SHA && process.env.GIT_SHA !== 'unknown' ? ` (${process.env.GIT_SHA.slice(0, 7)})` : '';
   console.log(`Blueskybot v${VERSION}${commit} starting up...`);
   if (ALT_TEXT_ENABLED) {
-    if (ALT_TEXT_PROVIDER === 'openai' && !OPENAI_API_KEY) {
-      console.error('ALT_TEXT_PROVIDER=openai but OPENAI_API_KEY is not set.');
+    const primary = resolveAltTextProvider(ALT_TEXT_PROVIDER, 'gemini');
+    const fallbackSetting = process.env.ALT_TEXT_FALLBACK_PROVIDER;
+    const backup = resolveAltTextProvider(fallbackSetting);
+    if (fallbackSetting && !backup) {
+      console.error(`Unknown ALT_TEXT_FALLBACK_PROVIDER "${fallbackSetting}". Use gemini, openai or mistral.`);
       process.exit(1);
     }
-    if (ALT_TEXT_PROVIDER === 'gemini' && !GEMINI_API_KEY) {
-      console.error('ALT_TEXT_ENABLED=true but GEMINI_API_KEY is not set.');
-      process.exit(1);
+    for (const [setting, name] of [['ALT_TEXT_PROVIDER', primary], ['ALT_TEXT_FALLBACK_PROVIDER', backup]]) {
+      if (name && !ALT_TEXT_PROVIDERS[name].apiKey()) {
+        console.error(`${setting}=${name} but ${name.toUpperCase()}_API_KEY is not set.`);
+        process.exit(1);
+      }
     }
+    console.log(`Alt text: ${ALT_TEXT_PROVIDERS[primary].name}${backup && backup !== primary ? `, backup ${ALT_TEXT_PROVIDERS[backup].name}` : ''}.`);
   }
   try {
     await fs.access(DATA_DIR, fs.constants.W_OK);
