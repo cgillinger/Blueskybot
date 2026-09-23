@@ -7,7 +7,14 @@ and the project follows [Semantic Versioning](https://semver.org/).
 Versions before 2.0.0 were never tagged; they are reconstructed from the git
 history and each one points at the last commit it covers.
 
-## [2.0.0] - Unreleased
+## [Unreleased]
+
+### Added
+- Mistral (`ministral-14b-latest`, free plan) as alt-text provider (`ALT_TEXT_PROVIDER=mistral`).
+- `ALT_TEXT_FALLBACK_PROVIDER`: a backup alt-text provider that is tried when the main one fails,
+  e.g. Gemini with Mistral as backup. The startup log shows the configured chain.
+
+## [2.0.0] - 2026-09-23
 
 ### Breaking
 - Requires Node.js 20.9 or newer (the Docker image now uses Node 22; Node 18 is end-of-life).

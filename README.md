@@ -213,11 +213,14 @@ Environment variables (set in `.env`):
 | `BLUESKY_PASSWORD`  | —        | Your Bluesky password or App Password                |
 | `ALT_TEXT_ENABLED`  | `false`  | Set to `true` to enable AI-generated alt-text        |
 | `ALT_TEXT_LANGUAGE` | `en`     | BCP-47 language code for alt-text (e.g. `sv`, `fi`) |
-| `ALT_TEXT_PROVIDER` | `gemini` | Alt-text provider — `gemini` or `openai`             |
-| `GEMINI_API_KEY`    | —        | Required when `ALT_TEXT_PROVIDER=gemini`             |
-| `OPENAI_API_KEY`    | —        | Required when `ALT_TEXT_PROVIDER=openai`             |
+| `ALT_TEXT_PROVIDER` | `gemini` | Alt-text provider — `gemini`, `openai` or `mistral`  |
+| `ALT_TEXT_FALLBACK_PROVIDER` | — | Backup provider, tried when the main one fails (e.g. `mistral`) |
+| `GEMINI_API_KEY`    | —        | Required when Gemini is the provider or backup       |
+| `OPENAI_API_KEY`    | —        | Required when OpenAI is the provider or backup       |
+| `MISTRAL_API_KEY`   | —        | Required when Mistral is the provider or backup      |
 | `GEMINI_MODEL`      | `gemini-3.5-flash` | Gemini model used for alt text             |
 | `OPENAI_MODEL`      | `gpt-4o-mini` | OpenAI model used for alt text                 |
+| `MISTRAL_MODEL`     | `ministral-14b-latest` | Mistral model used for alt text       |
 | `DATA_DIR`          | `.` (`/data` in Docker) | Folder holding `feeds.txt`, `lastPostedLinks.json` and `deferredItems.json` |
 
 ## Custom providers
@@ -257,7 +260,7 @@ Return `null` instead of an array to signal "nothing changed since last poll" (e
 
 ### Alt-text for images
 
-The bot automatically generates image descriptions using Google's Gemini AI **or** OpenAI's `gpt-4o-mini`, making posts accessible to visually impaired users. Pick the provider with `ALT_TEXT_PROVIDER` (`gemini` is the default). When enabled, posts with images use `app.bsky.embed.images` with AI-generated alt text instead of plain link preview cards. The article URL is always included in the post text, so readers can still open the article.
+The bot automatically generates image descriptions using Google's Gemini, Mistral's `ministral-14b-latest` or OpenAI's `gpt-4o-mini`, making posts accessible to visually impaired users. Pick the provider with `ALT_TEXT_PROVIDER` (`gemini` is the default), and optionally a backup with `ALT_TEXT_FALLBACK_PROVIDER`. When enabled, posts with images use `app.bsky.embed.images` with AI-generated alt text instead of plain link preview cards. The article URL is always included in the post text, so readers can still open the article.
 
 #### Step 1 — Get a free Gemini API key
 
@@ -274,7 +277,7 @@ The bot automatically generates image descriptions using Google's Gemini AI **or
 ```env
 ALT_TEXT_ENABLED=true
 ALT_TEXT_LANGUAGE=sv        # BCP-47 code: sv=Swedish, en=English, fi=Finnish, de=German …
-ALT_TEXT_PROVIDER=gemini    # or "openai"
+ALT_TEXT_PROVIDER=gemini    # or "openai" / "mistral"
 GEMINI_API_KEY=AIzaSyXXXX   # required when ALT_TEXT_PROVIDER=gemini
 # OPENAI_API_KEY=sk-XXXX    # required when ALT_TEXT_PROVIDER=openai
 ```
@@ -296,12 +299,31 @@ The bot validates the key at startup. If `ALT_TEXT_ENABLED=true` and the key for
 
 If Gemini is unavailable or rate-limited (HTTP 429), the bot retries up to 3 times with exponential backoff (2 s → 4 s → 8 s) before considering the attempt failed.
 
+#### Mistral as backup (recommended)
+
+A second provider keeps alt text working if the first one is down, out of quota, or retires its model. Mistral's free *Experiment* plan needs no credit card (phone verification only):
+
+1. Sign up at [console.mistral.ai](https://console.mistral.ai), choose the free plan and create an API key under **API Keys**
+2. Add to `.env`:
+
+```env
+ALT_TEXT_FALLBACK_PROVIDER=mistral
+MISTRAL_API_KEY=your_mistral_api_key
+# MISTRAL_MODEL=ministral-14b-latest
+```
+
+When the main provider fails for an image, the bot immediately asks the backup; only if both fail is the item deferred to the retry queue. The startup log shows the chain, e.g. `Alt text: Gemini, backup Mistral.`
+
+> Mistral's free plan does not include every model. Models outside the plan (e.g. `mistral-small`, `mistral-medium`) answer **HTTP 429** even on an unused account, which looks like an exhausted quota. The `ministral-*` models work on the free plan. Mistral can also be the main provider: `ALT_TEXT_PROVIDER=mistral`.
+
 #### Troubleshooting alt-text
 
 | Problem | Solution |
 |---------|----------|
-| `ALT_TEXT_ENABLED=true but GEMINI_API_KEY is not set` | Add `GEMINI_API_KEY=…` to `.env` and restart |
+| `ALT_TEXT_PROVIDER=gemini but GEMINI_API_KEY is not set` | Add `GEMINI_API_KEY=…` to `.env` and restart |
 | `ALT_TEXT_PROVIDER=openai but OPENAI_API_KEY is not set` | Add `OPENAI_API_KEY=…` to `.env` and restart |
+| `ALT_TEXT_FALLBACK_PROVIDER=mistral but MISTRAL_API_KEY is not set` | Add `MISTRAL_API_KEY=…` to `.env`, or remove the backup setting |
+| `Mistral rate limit (429)` on every call | The model isn't on your Mistral plan. Use a `ministral-*` model in `MISTRAL_MODEL` |
 | Alt-text is in the wrong language | Check `ALT_TEXT_LANGUAGE` — use a BCP-47 code like `sv`, `en`, `fi` |
 | Posts fall back to link cards | The image may exceed 1 MB or be unreachable. Check logs for details |
 | `Gemini returned HTTP 403` | The API key is invalid or restricted — regenerate it in Google AI Studio |
