@@ -7,7 +7,7 @@ and the project follows [Semantic Versioning](https://semver.org/).
 Versions before 2.0.0 were never tagged; they are reconstructed from the git
 history and each one points at the last commit it covers.
 
-## [Unreleased]
+## [2.1.0] - 2026-09-23
 
 ### Added
 - Mistral (`ministral-14b-latest`, free plan) as alt-text provider (`ALT_TEXT_PROVIDER=mistral`).
