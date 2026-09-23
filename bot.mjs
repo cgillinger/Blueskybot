@@ -30,6 +30,9 @@ const ALT_TEXT_LANGUAGE = process.env.ALT_TEXT_LANGUAGE || 'en';
 const ALT_TEXT_PROVIDER = process.env.ALT_TEXT_PROVIDER || 'gemini';
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
+// Model IDs are configurable so a provider retiring a model only needs an .env change
+const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
+const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 const ALT_IMAGE_MAX_DIMENSION = 256;  // was 512 — halves Gemini token cost
 const ALT_TEXT_API_ATTEMPTS = 3;      // attempts per alt-text API call on HTTP 429
 
@@ -354,7 +357,7 @@ function buildAltTextPrompt(context) {
 const ALT_TEXT_PROVIDERS = {
   gemini: {
     name: 'Gemini',
-    url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent',
+    url: `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(GEMINI_MODEL)}:generateContent`,
     headers: () => ({ 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY }),
     body: (base64Data, mimeType, prompt) => ({
       contents: [{
@@ -364,14 +367,18 @@ const ALT_TEXT_PROVIDERS = {
         ],
       }],
     }),
-    extractText: data => data?.candidates?.[0]?.content?.parts?.[0]?.text,
+    // Newer models may return several parts (e.g. thought summaries); keep only the answer text
+    extractText: data => (data?.candidates?.[0]?.content?.parts || [])
+      .filter(part => part.text && !part.thought)
+      .map(part => part.text)
+      .join(''),
   },
   openai: {
     name: 'OpenAI',
     url: 'https://api.openai.com/v1/chat/completions',
     headers: () => ({ 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENAI_API_KEY}` }),
     body: (base64Data, mimeType, prompt) => ({
-      model: 'gpt-4o-mini',
+      model: OPENAI_MODEL,
       max_tokens: 300,
       messages: [{
         role: 'user',
