@@ -488,3 +488,20 @@ test.todo('deferred item posts on retry when alt text succeeds');
 test.todo('deferred item posts without alt text after ALT_TEXT_MAX_RETRIES');
 
 test.todo('parallel prefetch processes in batches of ALT_TEXT_CONCURRENCY');
+
+// --- buildPostText ---
+
+import { buildPostText } from './bot.mjs';
+
+test('buildPostText keeps short posts unchanged', () => {
+  assert.equal(buildPostText('Ekot', 'Rubrik', 'https://x.se/a'), 'Ekot: Rubrik\n\nhttps://x.se/a');
+  assert.equal(buildPostText(null, 'Rubrik', 'https://x.se/a'), 'Rubrik\n\nhttps://x.se/a');
+});
+
+test('buildPostText truncates long titles to fit 300 graphemes and keeps the link', () => {
+  const link = 'https://example.com/' + 'a'.repeat(80);
+  const text = buildPostText('Feed', 'ö'.repeat(400), link);
+  assert.equal([...new Intl.Segmenter().segment(text)].length, 300);
+  assert.ok(text.endsWith(`…\n\n${link}`));
+  assert.ok(text.startsWith('Feed: '));
+});

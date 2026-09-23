@@ -52,17 +52,26 @@ const LAST_POSTED_LINKS_FILE = 'lastPostedLinks.json';
  * Fetch with timeout to prevent hanging requests.
  */
 export function fetchWithTimeout(url, options = {}) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  return fetch(url, { ...options, signal: controller.signal })
-    .finally(() => clearTimeout(timeout));
+  // AbortSignal.timeout also covers reading the body (text()/arrayBuffer()),
+  // so a server that stalls mid-response can't hang the poll loop.
+  return fetch(url, { ...options, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
 }
 
 export function fetchWithAltTextTimeout(url, options = {}) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), ALT_TEXT_FETCH_TIMEOUT_MS);
-  return fetch(url, { ...options, signal: controller.signal })
-    .finally(() => clearTimeout(timeout));
+  return fetch(url, { ...options, signal: AbortSignal.timeout(ALT_TEXT_FETCH_TIMEOUT_MS) });
+}
+
+/**
+ * Fetch an image and return { imageData, contentType }.
+ * Throws on non-2xx or non-image responses so error pages are never uploaded.
+ */
+async function fetchImage(imageUrl) {
+  const response = await fetchWithTimeout(imageUrl);
+  if (!response.ok) throw new Error(`Image fetch returned HTTP ${response.status}`);
+  const contentType = response.headers.get('content-type')?.split(';')[0] || 'image/jpeg';
+  if (!contentType.startsWith('image/')) throw new Error(`Not an image (${contentType})`);
+  const imageData = Buffer.from(await response.arrayBuffer());
+  return { imageData, contentType };
 }
 
 /**
@@ -172,9 +181,19 @@ async function loadLastPostedLinks() {
   }
 }
 
+/**
+ * Write JSON via temp file + rename so a crash or container stop mid-write
+ * can't leave a truncated file (which would reset state and cause reposts).
+ */
+async function writeJsonAtomic(file, data) {
+  const tmp = `${file}.tmp`;
+  await fs.writeFile(tmp, JSON.stringify(data, null, 2));
+  await fs.rename(tmp, file);
+}
+
 // Save last posted entries to file
 async function saveLastPostedLinks() {
-  await fs.writeFile(LAST_POSTED_LINKS_FILE, JSON.stringify(lastPostedLinks, null, 2));
+  await writeJsonAtomic(LAST_POSTED_LINKS_FILE, lastPostedLinks);
 }
 
 async function loadDeferredItems() {
@@ -187,7 +206,7 @@ async function loadDeferredItems() {
 }
 
 async function saveDeferredItems() {
-  await fs.writeFile(DEFERRED_ITEMS_FILE, JSON.stringify(deferredItems, null, 2));
+  await writeJsonAtomic(DEFERRED_ITEMS_FILE, deferredItems);
 }
 
 /**
@@ -240,6 +259,15 @@ function isPublishedWithinWindow(pubDate) {
  */
 function isAlreadyPosted(_feedKey, link) {
   return Object.values(lastPostedLinks).some(links => links.includes(link));
+}
+
+/**
+ * Check if a link is already waiting in the alt-text retry queue.
+ * Without this, every poll cycle would re-defer the same item, piling up
+ * duplicate queue entries that each trigger their own alt-text API calls.
+ */
+function isDeferred(link) {
+  return deferredItems.some(entry => entry.item.link === link);
 }
 
 /**
@@ -341,13 +369,13 @@ async function generateAltTextGemini(imageBuffer, mimeType, fetchFn, retryDelayM
       ],
     }],
   };
-  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent`;
 
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const response = await fetchFn(apiUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': GEMINI_API_KEY },
         body: JSON.stringify(requestBody),
       });
 
@@ -477,9 +505,7 @@ async function prefetchAltText(imageUrl, context = '') {
   try {
     if (shouldSkipAltText(imageUrl)) {
       console.log(`Skipping alt-text API for non-content image: ${imageUrl}`);
-      const imageResponse = await fetchWithTimeout(imageUrl);
-      const contentType = imageResponse.headers.get('content-type')?.split(';')[0] || 'image/jpeg';
-      const imageData = Buffer.from(await imageResponse.arrayBuffer());
+      const { imageData, contentType } = await fetchImage(imageUrl);
       if (imageData.length > MAX_IMAGE_SIZE) return null;
 
       let aspectRatio;
@@ -494,9 +520,7 @@ async function prefetchAltText(imageUrl, context = '') {
     const cached = getCachedAltText(imageUrl);
     if (cached) {
       console.log(`Alt-text cache hit for ${imageUrl}`);
-      const imageResponse = await fetchWithTimeout(imageUrl);
-      const contentType = imageResponse.headers.get('content-type')?.split(';')[0] || 'image/jpeg';
-      const imageData = Buffer.from(await imageResponse.arrayBuffer());
+      const { imageData, contentType } = await fetchImage(imageUrl);
       if (imageData.length > MAX_IMAGE_SIZE) return null;
 
       let aspectRatio;
@@ -508,9 +532,7 @@ async function prefetchAltText(imageUrl, context = '') {
       return { altText: cached, imageData, contentType, aspectRatio };
     }
 
-    const imageResponse = await fetchWithTimeout(imageUrl);
-    const contentType = imageResponse.headers.get('content-type')?.split(';')[0] || 'image/jpeg';
-    const imageData = Buffer.from(await imageResponse.arrayBuffer());
+    const { imageData, contentType } = await fetchImage(imageUrl);
 
     if (imageData.length > MAX_IMAGE_SIZE) {
       console.log(`Image too large (${imageData.length} bytes), cannot use for images embed.`);
@@ -573,9 +595,7 @@ async function buildEmbedCard(item, url) {
     // --- Images embed with Gemini alt text ---
     if (ALT_TEXT_ENABLED && imageUrl) {
       try {
-        const imageResponse = await fetchWithTimeout(imageUrl);
-        const contentType = imageResponse.headers.get('content-type')?.split(';')[0] || 'image/jpeg';
-        const imageData = Buffer.from(await imageResponse.arrayBuffer());
+        const { imageData, contentType } = await fetchImage(imageUrl);
 
         if (imageData.length > MAX_IMAGE_SIZE) {
           console.log(`Image too large (${imageData.length} bytes), falling back to embed.external without thumbnail.`);
@@ -621,9 +641,7 @@ async function buildEmbedCard(item, url) {
 
     if (imageUrl) {
       try {
-        const imageResponse = await fetchWithTimeout(imageUrl);
-        const contentType = imageResponse.headers.get('content-type')?.split(';')[0] || 'image/jpeg';
-        const imageData = Buffer.from(await imageResponse.arrayBuffer());
+        const { imageData, contentType } = await fetchImage(imageUrl);
 
         if (imageData.length > MAX_IMAGE_SIZE) {
           console.log(`Image too large (${imageData.length} bytes), skipping thumbnail.`);
@@ -642,6 +660,25 @@ async function buildEmbedCard(item, url) {
     console.error(`Failed to build embed card for ${url}: ${error.message}`);
     return null;
   }
+}
+
+const MAX_POST_GRAPHEMES = 300;
+
+/**
+ * Build the post text "Feed: Title\n\nlink", shortening the title if needed
+ * so the post stays within Bluesky's 300-grapheme limit (otherwise the post
+ * is rejected and retried every cycle for an hour).
+ */
+export function buildPostText(feedTitle, title, link) {
+  const prefix = feedTitle ? `${feedTitle}: ` : '';
+  const suffix = `\n\n${link}`;
+  const segmenter = new Intl.Segmenter();
+  const graphemes = [...segmenter.segment(title || '')].map(s => s.segment);
+  const count = str => [...segmenter.segment(str)].length;
+  const budget = MAX_POST_GRAPHEMES - count(prefix) - count(suffix);
+  if (graphemes.length <= budget) return `${prefix}${title || ''}${suffix}`;
+  const shortTitle = budget > 1 ? graphemes.slice(0, budget - 1).join('').trimEnd() + '…' : '';
+  return `${prefix}${shortTitle}${suffix}`;
 }
 
 function describeFeed(feed) {
@@ -666,7 +703,8 @@ async function processFeed(feed) {
   const postable = items.filter(item =>
     item.link &&
     isPublishedWithinWindow(item.pubDate) &&
-    !isAlreadyPosted(feedKey, item.link)
+    !isAlreadyPosted(feedKey, item.link) &&
+    !isDeferred(item.link)
   );
 
   if (postable.length === 0) return;
@@ -687,6 +725,7 @@ async function processFeed(feed) {
           }
           const altTextContext = [item.title, item.description].filter(Boolean).join(' — ');
           const result = await prefetchAltText(resolvedImageUrl, altTextContext);
+          item._resolvedImageUrl = resolvedImageUrl;
           return { link: item.link, result };
         })
       );
@@ -720,7 +759,8 @@ async function processFeed(feed) {
           unrecordPostedLink(feedKey, item.link);
           await saveLastPostedLinks();
           deferredItems.push({
-            item: { ...item, _ogData: undefined },
+            // Keep the resolved (possibly OG-derived) image URL so the retry can find it
+            item: { ...item, imageUrl: item._resolvedImageUrl, _ogData: undefined, _resolvedImageUrl: undefined },
             feedKey,
             feedTitle: feed.title,
             retryCount: 0,
@@ -744,7 +784,7 @@ async function processFeed(feed) {
       }
 
       await rateLimit(true);
-      const postText = `${feed.title ? `${feed.title}: ` : ''}${item.title}\n\n${item.link}`;
+      const postText = buildPostText(feed.title, item.title, item.link);
       const rt = new RichText({ text: postText });
       await rt.detectFacets(agent);
       await agent.post({
@@ -788,7 +828,7 @@ async function processDeferredItems() {
         if (prefetched.aspectRatio) imageEntry.aspectRatio = prefetched.aspectRatio;
 
         await rateLimit(true);
-        const postText = `${feedTitle ? `${feedTitle}: ` : ''}${item.title}\n\n${item.link}`;
+        const postText = buildPostText(feedTitle, item.title, item.link);
         const rt = new RichText({ text: postText });
         await rt.detectFacets(agent);
         await agent.post({
@@ -827,7 +867,7 @@ async function processDeferredItems() {
         }
 
         await rateLimit(true);
-        const postText = `${feedTitle ? `${feedTitle}: ` : ''}${item.title}\n\n${item.link}`;
+        const postText = buildPostText(feedTitle, item.title, item.link);
         const rt = new RichText({ text: postText });
         await rt.detectFacets(agent);
         await agent.post({
