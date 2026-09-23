@@ -505,3 +505,31 @@ test('buildPostText truncates long titles to fit 300 graphemes and keeps the lin
   assert.ok(text.endsWith(`…\n\n${link}`));
   assert.ok(text.startsWith('Feed: '));
 });
+
+test('generateAltText (gemini) calls the default model with the key in a header', async () => {
+  let captured;
+  const mockFetch = async (url, options) => {
+    captured = { url, headers: options.headers };
+    return { ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: 'x' }] } }] }) };
+  };
+  await generateAltText(Buffer.from('x'), 'image/jpeg', mockFetch);
+  assert.ok(captured.url.includes('/models/gemini-3.5-flash:generateContent'));
+  assert.ok(!captured.url.includes('key='), 'API key must not be in the URL');
+  assert.ok('x-goog-api-key' in captured.headers);
+});
+
+test('generateAltText (gemini) ignores thought parts and joins answer text', async () => {
+  const mockFetch = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      candidates: [{ content: { parts: [
+        { text: 'thinking about it', thought: true },
+        { text: 'En röd ' },
+        { text: 'rektangel' },
+      ] } }],
+    }),
+  });
+  const result = await generateAltText(Buffer.from('x'), 'image/jpeg', mockFetch);
+  assert.equal(result, 'En röd rektangel');
+});

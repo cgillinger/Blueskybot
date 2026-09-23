@@ -216,6 +216,8 @@ Environment variables (set in `.env`):
 | `ALT_TEXT_PROVIDER` | `gemini` | Alt-text provider — `gemini` or `openai`             |
 | `GEMINI_API_KEY`    | —        | Required when `ALT_TEXT_PROVIDER=gemini`             |
 | `OPENAI_API_KEY`    | —        | Required when `ALT_TEXT_PROVIDER=openai`             |
+| `GEMINI_MODEL`      | `gemini-3.5-flash` | Gemini model used for alt text             |
+| `OPENAI_MODEL`      | `gpt-4o-mini` | OpenAI model used for alt text                 |
 | `DATA_DIR`          | `.` (`/data` in Docker) | Folder holding `feeds.txt`, `lastPostedLinks.json` and `deferredItems.json` |
 
 ## Custom providers
@@ -263,7 +265,9 @@ The bot automatically generates image descriptions using Google's Gemini AI **or
 2. Click **Create API key** → **Create API key in new project** (or pick an existing project)
 3. Copy the key — it looks like `AIzaSyXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX`
 
-> The free tier includes approximately 250 requests per day, which covers most RSS volumes. No billing required.
+> The free tier (Flash models only) allows several hundred requests per day, which covers most RSS volumes. No billing required. Current limits: [Gemini API rate limits](https://ai.google.dev/gemini-api/docs/rate-limits).
+>
+> In the EEA, Switzerland and the UK, Google does not use your prompts or images for training, even on the free tier. Elsewhere, free-tier data may be used to improve Google's products.
 
 #### Step 2 — Enable alt-text in `.env`
 
@@ -301,7 +305,8 @@ If Gemini is unavailable or rate-limited (HTTP 429), the bot retries up to 3 tim
 | Alt-text is in the wrong language | Check `ALT_TEXT_LANGUAGE` — use a BCP-47 code like `sv`, `en`, `fi` |
 | Posts fall back to link cards | The image may exceed 1 MB or be unreachable. Check logs for details |
 | `Gemini returned HTTP 403` | The API key is invalid or restricted — regenerate it in Google AI Studio |
-| `Gemini rate limit persisted after 3 retries` | You've hit the free-tier daily limit (≈250 req/day). The item is deferred and retried next cycle |
+| `Gemini rate limit persisted after 3 retries` | You've hit the free-tier rate or daily limit. The item is deferred and retried next cycle |
+| `Gemini returned HTTP 404` | The model in `GEMINI_MODEL` has been retired or renamed. Set a current Flash model — see [Gemini models](https://ai.google.dev/gemini-api/docs/models) |
 | Item deferred for many cycles | Alt-text is consistently failing (quota, network). After `ALT_TEXT_MAX_RETRIES` cycles the item posts without alt text |
 | `OpenAI returned HTTP 401` | The OpenAI API key is invalid or revoked — regenerate it in your OpenAI dashboard |
 | `OpenAI returned HTTP 429` / `OpenAI rate limit persisted after 3 retries` | You've hit your OpenAI rate or spend limit. The bot continues posting without alt-text |

@@ -30,6 +30,8 @@ history and each one points at the last commit it covers.
 - Posts longer than Bluesky's 300-grapheme limit were rejected; long titles are now shortened.
 
 ### Changed
+- Default Gemini model is now `gemini-3.5-flash`; `gemini-2.5-flash` is retired by Google on 16 October 2026.
+  The model can be changed with `GEMINI_MODEL` (and `OPENAI_MODEL` for OpenAI).
 - Gemini API key is sent as a header instead of in the URL.
 - `sharp` upgraded to 0.35 (fixes libvips/libheif security advisories).
 - Internal refactor removing duplicated image/alt-text/posting code; shared helpers in `lib/utils.mjs`.
