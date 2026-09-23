@@ -1,19 +1,15 @@
 # Blueskybot
 
-[![Node.js](https://img.shields.io/badge/Node.js-18+-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-20.9+-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
+[![GHCR](https://img.shields.io/badge/ghcr.io-prebuilt%20image-2496ED?logo=github&logoColor=white)](https://github.com/cgillinger/blueskybot/pkgs/container/blueskybot)
+[![Version](https://img.shields.io/github/package-json/v/cgillinger/blueskybot)](CHANGELOG.md)
 [![Bluesky](https://img.shields.io/badge/Bluesky-AT%20Protocol-0085ff?logo=bluesky&logoColor=white)](https://bsky.app/)
 
 A lightweight Node.js bot that monitors RSS feeds and posts new articles to [Bluesky](https://bsky.app). Features rich embed cards, AI-generated alt text for image accessibility via Google Gemini or OpenAI, and a pluggable provider system so any source — JSON APIs, scrapers, etc. — can be added by dropping a single file into `providers/`.
 
-> **Recent changes (April 2026):**
-> - Alt-text images downscaled to 256 px (was 512) — ~50% fewer Gemini/OpenAI tokens
-> - Parallel alt-text prefetch: up to 3 images processed concurrently per feed cycle
-> - Article title and description passed as context hint to the vision model — reduces misidentification
-> - Defer-on-failure retry queue: items whose alt text fails are retried for up to 5 cycles before posting without alt text
-> - In-memory alt-text cache: the same image URL is never sent to the API twice per process lifetime
-> - Favicons, logos, and icons skip the API entirely and use a generic alt text
+> **What's new:** see the [changelog](CHANGELOG.md).
 
 ## Features
 
@@ -36,7 +32,7 @@ A lightweight Node.js bot that monitors RSS feeds and posts new articles to [Blu
 
 ## Prerequisites
 
-- [Node.js](https://nodejs.org/) 18+ (or [Docker](https://www.docker.com/))
+- [Node.js](https://nodejs.org/) 20.9+ (or [Docker](https://www.docker.com/))
 - A [Bluesky](https://bsky.app) account
 - One or more RSS feed URLs to monitor
 
@@ -97,37 +93,102 @@ The bot polls every minute and posts articles published within the last hour. Co
 
 ## Docker
 
-### Using Docker Compose (recommended)
+### Option 1: prebuilt image (recommended)
+
+A multi-arch image (amd64 + arm64) is built, tested and published to GitHub Container Registry on every change: [`ghcr.io/cgillinger/blueskybot`](https://github.com/cgillinger/blueskybot/pkgs/container/blueskybot). No cloning or building needed.
+
+1. Make a folder with a `data` subfolder, and put your configuration there:
 
 ```bash
-cp .env.example .env          # configure credentials
-cp feeds.txt.example feeds.txt # configure feeds
-docker compose up -d --build
+mkdir -p blueskybot/data && cd blueskybot
+# .env with your credentials (see .env.example), and data/feeds.txt with your feeds
 ```
 
-```bash
-docker compose logs -f        # follow logs
-docker compose down           # stop
+2. Save this as `docker-compose.yml`:
+
+```yaml
+services:
+  blueskybot:
+    image: ghcr.io/cgillinger/blueskybot:latest
+    container_name: blueskybot
+    env_file: .env
+    volumes:
+      - ./data:/data   # feeds.txt + lastPostedLinks.json + deferredItems.json
+    restart: always
 ```
 
-> **Note:** `feeds.txt` is baked into the Docker image at build time — it is **not** mounted as a volume. If you edit `feeds.txt` on the host after the initial build, you must rebuild the image for the change to take effect:
-> ```bash
-> docker compose build && docker compose up -d
-> ```
-> After rebuilding, verify that the correct feeds were loaded:
-> ```bash
-> docker logs blueskybot --tail 20
-> # Expected: Loaded N feed(s) from feeds.txt.
-> ```
-
-### Using Docker directly
+3. Start it:
 
 ```bash
+docker compose up -d
+docker compose logs -f        # Expected: "Blueskybot vX.Y.Z (abc1234) starting up..."
+```
+
+Edits to `data/feeds.txt` take effect after `docker compose restart`. To update the bot: `docker compose pull && docker compose up -d`.
+
+The container runs as a non-root user, so the `data` folder must be writable by it. If the log says *Data directory /data is not writable*, run `chmod 777 data` (or `chown` it to the container user) on the host.
+
+`:latest` follows the main branch. To stay on a fixed version, use a version tag such as `ghcr.io/cgillinger/blueskybot:2.0.0` (or `:2.0` for patch updates only). Every [release](https://github.com/cgillinger/blueskybot/releases) has a matching image tag; see the [changelog](CHANGELOG.md).
+
+### Option 2: build from source
+
+```bash
+git clone https://github.com/cgillinger/Blueskybot.git && cd Blueskybot
+cp .env.example .env
+mkdir -p data && cp feeds.txt.example data/feeds.txt
 docker build -t blueskybot .
-docker run -d --name blueskybot --env-file .env --restart always blueskybot
+docker run -d --name blueskybot --env-file .env -v "$PWD/data:/data" --restart always blueskybot
 ```
 
-The container uses `node:18-alpine`, runs as a non-root user, and includes a health check.
+The image is based on `node:22-alpine` and includes a health check.
+
+### Upgrading from 1.x
+
+Older setups built the image locally and mounted the whole project folder over `/app`, with `feeds.txt` and the state files next to the code. From 2.0 the code lives in the image and your own files live in a `data` folder mounted at `/data`.
+
+Example below for a Synology NAS with the bot in `/volume1/docker/blueskybot` — adjust the path to your setup.
+
+1. **Stop the bot**
+
+   ```bash
+   cd /volume1/docker/blueskybot
+   docker compose down
+   ```
+
+2. **Move your files into `data/`**
+
+   ```bash
+   mkdir -p data
+   mv feeds.txt lastPostedLinks.json data/
+   mv deferredItems.json data/ 2>/dev/null
+   ```
+
+   `lastPostedLinks.json` is the important one: without it the bot doesn't know what it has already posted and reposts every article from the last hour. `.env` stays where it is, next to `docker-compose.yml`.
+
+3. **Make `data/` writable for the container user** (the bot runs as a non-root user and exits with *Data directory /data is not writable* otherwise)
+
+   ```bash
+   chmod 777 data
+   chmod 666 data/*
+   ```
+
+4. **Replace `docker-compose.yml`** with the one under [Option 1](#option-1-prebuilt-image-recommended). `./data` is relative to the compose file, so it resolves to `/volume1/docker/blueskybot/data` here. The old code files in the folder (`bot.mjs`, `node_modules/` …) are no longer used and can be deleted.
+
+5. **Make sure the server can pull the image.** New GHCR packages are private by default. Once, after the first image is published, either make it public on GitHub (*Packages → blueskybot → Package settings → Change visibility → Public*), or log in on the server with a personal access token that has `read:packages`:
+
+   ```bash
+   echo <TOKEN> | docker login ghcr.io -u cgillinger --password-stdin
+   ```
+
+6. **Start and check the log**
+
+   ```bash
+   docker compose pull && docker compose up -d
+   docker compose logs -f
+   # Expected: "Blueskybot v2.0.0 (abc1234) starting up..." and "Loaded N feed(s) from /data/feeds.txt."
+   ```
+
+**Rolling back:** set `image: ghcr.io/cgillinger/blueskybot:<older tag>`, or restore the old compose file and move the files back out of `data/`.
 
 ## Configuration
 
@@ -155,6 +216,7 @@ Environment variables (set in `.env`):
 | `ALT_TEXT_PROVIDER` | `gemini` | Alt-text provider — `gemini` or `openai`             |
 | `GEMINI_API_KEY`    | —        | Required when `ALT_TEXT_PROVIDER=gemini`             |
 | `OPENAI_API_KEY`    | —        | Required when `ALT_TEXT_PROVIDER=openai`             |
+| `DATA_DIR`          | `.` (`/data` in Docker) | Folder holding `feeds.txt`, `lastPostedLinks.json` and `deferredItems.json` |
 
 ## Custom providers
 
@@ -250,13 +312,17 @@ If Gemini is unavailable or rate-limited (HTTP 429), the bot retries up to 3 tim
 Blueskybot/
 ├── bot.mjs              # Main application — loop, posting, embeds, dedup
 ├── bot.test.mjs         # Unit tests (node:test, run with npm test)
+├── lib/utils.mjs        # Shared helpers (fetch with timeout, URL validation)
 ├── providers/           # Pluggable source providers
 │   ├── rss.mjs          # RSS/Atom (default, no prefix in feeds.txt)
+│   ├── sr-api.mjs       # Sveriges Radio news API (sr-api://)
 │   └── _template.mjs    # Skeleton for writing your own provider
 ├── feeds.txt            # Your feeds (not tracked by git)
 ├── feeds.txt.example    # Feed configuration template
 ├── deferredItems.json   # Alt-text retry queue (auto-created, not tracked by git)
 ├── Dockerfile           # Container image (Alpine, non-root)
+├── .github/workflows/   # Tests + Docker image publishing to GHCR
+├── CHANGELOG.md         # Release history
 ├── docker-compose.yml   # Compose orchestration
 ├── package.json         # Dependencies and scripts
 ├── .env.example         # Credential template
@@ -309,7 +375,21 @@ Blueskybot/
 | Thumbnails missing on some posts | The bot tries RSS media fields, content HTML `<img>` tags, and `og:image` in order. If all fail, the source site may have no accessible image or the image exceeds 1 MB. |
 | `FETCH_TIMEOUT` errors | The target site is slow or unreachable. The post will still be created without a thumbnail. |
 | Container unhealthy | Check logs with `docker compose logs` — likely a credential or network issue. |
-| Commented-out feed still posts | `feeds.txt` is baked into the image at build time. Editing it on the host has no effect until you rebuild: `docker compose build && docker compose up -d`. Verify with `docker logs blueskybot --tail 20`. |
+| Commented-out feed still posts | The bot reads `feeds.txt` at startup. Restart after editing: `docker compose restart`. Verify with `docker logs blueskybot --tail 20`. |
+| `Data directory … is not writable` | The container user can't write to the mounted `data` folder. Fix its permissions on the host (see [Docker](#docker)). |
+
+## Versioning and releases
+
+The version in `package.json` is the single source of truth, following [Semantic Versioning](https://semver.org/). Changes are recorded in [CHANGELOG.md](CHANGELOG.md).
+
+To release, update the changelog, then:
+
+```bash
+npm version patch   # or minor / major — bumps package.json, commits and tags vX.Y.Z
+git push --follow-tags
+```
+
+The workflow runs the tests, checks that the tag matches `package.json`, publishes the image as `:X.Y.Z` and `:X.Y`, and creates a GitHub release.
 
 ## Contributing
 

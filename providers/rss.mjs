@@ -1,5 +1,5 @@
 import RSSParser from 'rss-parser';
-import { fetchWithTimeout, isValidHttpUrl } from '../bot.mjs';
+import { fetchWithTimeout, isValidHttpUrl, truncateDescription } from '../lib/utils.mjs';
 
 const parser = new RSSParser({
   customFields: {
@@ -52,19 +52,22 @@ async function fetchFeedIfModified(feedUrl, httpCache) {
     return null;
   }
 
+  if (!response.ok) {
+    throw new Error(`Feed returned HTTP ${response.status}`);
+  }
+
+  const xml = await response.text();
+  const parsed = await parser.parseString(xml);
+
+  // Only cache validators once the feed parsed successfully; otherwise a
+  // broken response would be followed by 304s and its items never seen.
   httpCache.set(feedUrl, {
     etag: response.headers.get('etag') || null,
     lastModified: response.headers.get('last-modified') || null,
   });
-
-  const xml = await response.text();
-  return parser.parseString(xml);
+  return parsed;
 }
 
-function truncateDescription(text) {
-  if (!text) return '';
-  return text.length > 300 ? text.slice(0, 297) + '...' : text;
-}
 
 /**
  * RSS provider.

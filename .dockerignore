@@ -1,0 +1,10 @@
+.git
+.github
+node_modules
+.env
+data
+feeds.txt
+lastPostedLinks.json
+deferredItems.json
+*.tmp
+*.log
