@@ -144,18 +144,51 @@ The image is based on `node:22-alpine` and includes a health check.
 
 ### Upgrading from 1.x
 
-Older setups mounted the whole project folder over `/app` and kept `feeds.txt` and the state files next to the code. With 2.0 the code lives in the image and your files live in `/data`:
+Older setups built the image locally and mounted the whole project folder over `/app`, with `feeds.txt` and the state files next to the code. From 2.0 the code lives in the image and your own files live in a `data` folder mounted at `/data`.
 
-```bash
-docker compose down
-mkdir -p data
-mv feeds.txt lastPostedLinks.json data/
-mv deferredItems.json data/ 2>/dev/null
-# replace docker-compose.yml with the one above, then:
-docker compose up -d
-```
+Example below for a Synology NAS with the bot in `/volume1/docker/blueskybot` — adjust the path to your setup.
 
-Moving `lastPostedLinks.json` along is important: without it the bot doesn't know what it has already posted and will repost articles from the last hour.
+1. **Stop the bot**
+
+   ```bash
+   cd /volume1/docker/blueskybot
+   docker compose down
+   ```
+
+2. **Move your files into `data/`**
+
+   ```bash
+   mkdir -p data
+   mv feeds.txt lastPostedLinks.json data/
+   mv deferredItems.json data/ 2>/dev/null
+   ```
+
+   `lastPostedLinks.json` is the important one: without it the bot doesn't know what it has already posted and reposts every article from the last hour. `.env` stays where it is, next to `docker-compose.yml`.
+
+3. **Make `data/` writable for the container user** (the bot runs as a non-root user and exits with *Data directory /data is not writable* otherwise)
+
+   ```bash
+   chmod 777 data
+   chmod 666 data/*
+   ```
+
+4. **Replace `docker-compose.yml`** with the one under [Option 1](#option-1-prebuilt-image-recommended). `./data` is relative to the compose file, so it resolves to `/volume1/docker/blueskybot/data` here. The old code files in the folder (`bot.mjs`, `node_modules/` …) are no longer used and can be deleted.
+
+5. **Make sure the server can pull the image.** New GHCR packages are private by default. Once, after the first image is published, either make it public on GitHub (*Packages → blueskybot → Package settings → Change visibility → Public*), or log in on the server with a personal access token that has `read:packages`:
+
+   ```bash
+   echo <TOKEN> | docker login ghcr.io -u cgillinger --password-stdin
+   ```
+
+6. **Start and check the log**
+
+   ```bash
+   docker compose pull && docker compose up -d
+   docker compose logs -f
+   # Expected: "Blueskybot v2.0.0 (abc1234) starting up..." and "Loaded N feed(s) from /data/feeds.txt."
+   ```
+
+**Rolling back:** set `image: ghcr.io/cgillinger/blueskybot:<older tag>`, or restore the old compose file and move the files back out of `data/`.
 
 ## Configuration
 
