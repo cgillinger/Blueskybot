@@ -1,7 +1,7 @@
 {
   "name": "blueskybot",
   "version": "2.1.0",
-  "description": "Node.js bot that posts RSS feeds to Bluesky with AI-generated alt text for image accessibility. Supports Google Gemini and OpenAI.",
+  "description": "Node.js bot that posts RSS feeds to Bluesky with AI-generated alt text for image accessibility. Supports Google Gemini, Mistral and OpenAI.",
   "main": "bot.mjs",
   "type": "module",
   "scripts": {

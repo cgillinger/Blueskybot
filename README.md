@@ -7,7 +7,7 @@
 [![Version](https://img.shields.io/github/package-json/v/cgillinger/blueskybot)](CHANGELOG.md)
 [![Bluesky](https://img.shields.io/badge/Bluesky-AT%20Protocol-0085ff?logo=bluesky&logoColor=white)](https://bsky.app/)
 
-A lightweight Node.js bot that monitors RSS feeds and posts new articles to [Bluesky](https://bsky.app). Features rich embed cards, AI-generated alt text for image accessibility via Google Gemini or OpenAI, and a pluggable provider system so any source — JSON APIs, scrapers, etc. — can be added by dropping a single file into `providers/`.
+A lightweight Node.js bot that monitors RSS feeds and posts new articles to [Bluesky](https://bsky.app). Features rich embed cards, AI-generated alt text for image accessibility via Google Gemini, Mistral or OpenAI, and a pluggable provider system so any source — JSON APIs, scrapers, etc. — can be added by dropping a single file into `providers/`.
 
 ## What's new in 2.x
 
@@ -17,7 +17,7 @@ Version 2 turns Blueskybot from a build-it-yourself script into a packaged servi
 
 - Monitors multiple RSS feeds on a configurable polling interval
 - Posts new articles to Bluesky with rich embed cards (title, description, thumbnail)
-- **AI-generated alt text** for images via Google Gemini or OpenAI — making posts accessible to visually impaired users; configure with a single env var
+- **AI-generated alt text** for images via Google Gemini, Mistral or OpenAI — making posts accessible to visually impaired users; configure with a single env var, optionally with a fallback provider that takes over when the primary one fails
   - Article title and description are passed as context to the vision model, improving accuracy for named people and events
   - Up to 3 images prefetched in parallel per feed cycle to reduce posting latency
   - Failed alt-text calls trigger a retry queue (`deferredItems.json`); items retry for up to 5 cycles before posting without alt text as a last resort
