@@ -1,9 +1,9 @@
-version: '3'
 services:
   blueskybot:
-    build: .
+    image: ghcr.io/cgillinger/blueskybot:latest
+    # build: .   # uncomment to build from source instead of pulling the image
     container_name: blueskybot
     env_file: .env
     volumes:
-      - /volume1/docker/blueskybot:/app
+      - ./data:/data   # feeds.txt + lastPostedLinks.json + deferredItems.json
     restart: always

@@ -1,5 +1,5 @@
 import RSSParser from 'rss-parser';
-import { fetchWithTimeout, isValidHttpUrl } from '../bot.mjs';
+import { fetchWithTimeout, isValidHttpUrl, truncateDescription } from '../lib/utils.mjs';
 
 const parser = new RSSParser({
   customFields: {
@@ -68,10 +68,6 @@ async function fetchFeedIfModified(feedUrl, httpCache) {
   return parsed;
 }
 
-function truncateDescription(text) {
-  if (!text) return '';
-  return text.length > 300 ? text.slice(0, 297) + '...' : text;
-}
 
 /**
  * RSS provider.

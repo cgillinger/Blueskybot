@@ -1,4 +1,4 @@
-import { fetchWithTimeout, isValidHttpUrl } from '../bot.mjs';
+import { fetchWithTimeout, isValidHttpUrl, truncateDescription } from '../lib/utils.mjs';
 
 const API_BASE = 'https://api.sr.se/api/v2/news';
 const PAGE_SIZE = 20;
@@ -13,10 +13,6 @@ function parseDotNetDate(raw) {
   return new Date(parseInt(match[1], 10)).toISOString();
 }
 
-function truncateDescription(text) {
-  if (!text) return '';
-  return text.length > 300 ? text.slice(0, 297) + '...' : text;
-}
 
 /**
  * Sveriges Radio news API provider.

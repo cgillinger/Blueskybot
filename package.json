@@ -1,6 +1,6 @@
 {
   "name": "blueskybot",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Node.js bot that posts RSS feeds to Bluesky with AI-generated alt text for image accessibility. Supports Google Gemini and OpenAI.",
   "main": "bot.mjs",
   "type": "module",
@@ -33,7 +33,7 @@
     "dotenv": "^16.4.5",
     "node-fetch": "^3.3.2",
     "rss-parser": "^3.13.0",
-    "sharp": "^0.33.0"
+    "sharp": "^0.35.4"
   },
   "repository": {
     "type": "git",
@@ -41,5 +41,8 @@
   },
   "bugs": {
     "url": "https://github.com/cgillinger/blueskybot/issues"
+  },
+  "engines": {
+    "node": ">=20.9.0"
   }
 }

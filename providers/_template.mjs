@@ -10,7 +10,7 @@
  */
 
 // Most providers want these helpers. Remove the import if you don't need them.
-// import { fetchWithTimeout, isValidHttpUrl } from '../bot.mjs';
+// import { fetchWithTimeout, isValidHttpUrl, truncateDescription } from '../lib/utils.mjs';
 
 /**
  * Normalized item shape (this is what you must return per item):
