@@ -9,7 +9,9 @@
 
 A lightweight Node.js bot that monitors RSS feeds and posts new articles to [Bluesky](https://bsky.app). Features rich embed cards, AI-generated alt text for image accessibility via Google Gemini or OpenAI, and a pluggable provider system so any source — JSON APIs, scrapers, etc. — can be added by dropping a single file into `providers/`.
 
-> **What's new:** see the [changelog](CHANGELOG.md).
+## What's new in 2.x
+
+Version 2 turns Blueskybot from a build-it-yourself script into a packaged service. A prebuilt multi-arch image is published to [GHCR](https://github.com/cgillinger/blueskybot/pkgs/container/blueskybot) by CI on every release, so deploying or upgrading is a one-line tag bump in `docker-compose.yml`. Your own files — `feeds.txt` and the bot's post history — now live in a `data/` folder mounted at `/data`, so they survive image updates instead of being baked into the image or lost inside the container. The runtime moved to Node 22, and the poll loop was hardened: request timeouts cover stalled bodies, state files are written atomically so a crash can no longer cause reposts, and long titles are shortened to fit Bluesky's 300-grapheme limit. Alt text gained Mistral as a third provider and an optional fallback provider that takes over when the primary one fails. Releases are tagged and follow semantic versioning; the full list is in the [changelog](CHANGELOG.md), and *Upgrading from 1.x* below covers the migration.
 
 ## Features
 
